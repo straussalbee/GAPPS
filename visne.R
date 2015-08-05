@@ -3,20 +3,55 @@ library(Rtsne)
 library(ggplot2)
 library(reshape2)
 library(dplyr)
+
+################## READ IN FCS FILES (LIVE POPN, EXPORTED) ###########
+
+
+
 MICC_15_130_01 <- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\15-130-01_normalized.exported.FCS3.fcs")
-HVTN5217 <- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\5217.exported.FCS3.fcs")
+#HVTN5217 <- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\5217.exported.FCS3.fcs")
 HVTN4396<- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\4396_normalized.exported.FCS3.fcs")
 HVTN3633<-read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\3633_normalized.exported.FCS3.fcs")
+
+#checking the parameters
+pDataMICC<-pData(parameters(MICC_15_130_01))
+pData5217<-pData(parameters(HVTN5217))
+pData4396<-pData(parameters(HVTN4396))
+pData3633<-pData(parameters(HVTN3633))
+
+identical(pData3633$name,pData4396$name)
+identical(pData3633$name,pDataMICC$name)
+
+identical(pData3633$desc,pDataMICC$desc)
+identical(pData3633$desc,pData4396$desc)
+
+#which names that are in 5217 are NOT in 3633
+subset(pData5217$name,!(pData5217$name %in% pData3633$name))
+#$P49N     $P50N 
+#"Cd106Di" "Cd108Di" 
+#these are extra qdot channels, also the desc and name aren't matching up correctly
+
+################# ISSUE ######################################
+#5Aug15: Found issue when trying to remove unwanted channels from
+#the FCS files that I read in, some names and desc don't match up.
+#I checked flowjo and if I open the exported file in a new wsp I see
+#the same problem. Things match ok in the original wsp.
+#Tried to re-export the live population 2x and got "export error"
+#leaving that sample out for now
+
+
+###### SUBSAMPLE THE SAMPLES #####################
 
 cellsPerSample <- 500
 
 # get random sample of cells from each FCS file
+
 MICC_15_130_01_sub <- MICC_15_130_01[sample(1:nrow(MICC_15_130_01), cellsPerSample), ]
-HVTN5217_sub <- HVTN5217[sample(1:nrow(HVTN5217), cellsPerSample), ]
+#HVTN5217_sub <- HVTN5217[sample(1:nrow(HVTN5217), cellsPerSample), ]
 HVTN4396_sub <- HVTN4396[sample(1:nrow(HVTN4396), cellsPerSample), ]
 HVTN3633_sub <- HVTN3633[sample(1:nrow(HVTN3633), cellsPerSample), ]
 
-
+######################  GET CHANNEL NAMES ########################
 #extract the names assigned to the channels from the flowframe(CD3)
 #they are the same for all samples so I can get them from any of the 
 #flow frames
@@ -33,30 +68,25 @@ channelAndDesc$desc<-as.character(channelAndDesc$desc)
 rownames(channelAndDesc)<-NULL
 
 
-# combine files
+########################### COMBINE FILES ###########################
 #I want to remove any columns that aren't relevant for visualization
 #these are different for sample 5217 since I didn't collect beads
 #For the other samples:
-# skip columns 1,2,10,13 51,52 (time,event length,beads1, beads2,
+# skip columns 1,2,6,9,10,13,51,52 (time,event length,beads1, beads2,
 # beadDist and Event #)
 #Ce140 is beads1 amd Ce142 is beads2
 #qdot4 = Cd113 qdot6=Cd116
 
-#to remove from 5217
-remove5217<-c("Time", "Event_length", "Cd113Di", "Cd116Di", 
-              "beadDist")
-
-#columns to remove from the other samples
-removeOthers<-c("Time", "Event_length", "Cd113Di", "Cd116Di", "Ce140Di", "Ce142Di", 
-                "beadDist")
 
 # @exprs removes matrix from flowframe
 #one row per cell, columns are channels
 #rbind multiple samples
-toCluster <- rbind(MICC_15_130_01_sub@exprs[,removeOthers],
-                   HVTN5217_sub@exprs[,],
-                   HVTN4396_sub@exprs[,3:50],
-                   HVTN3633_sub@exprs[ , 3:50])
+#Note that HVTN5217 doesn't have any of the beads columns so the indices to remove are different
+
+toCluster <- rbind(MICC_15_130_01_sub@exprs[,-c(1,2,6,9,10,13,51,52)],
+                   #HVTN5217_sub@exprs[,-c(1,2,6,9,51)],
+                   HVTN4396_sub@exprs[,-c(1,2,6,9,10,13,51,52)],
+                   HVTN3633_sub@exprs[ , -c(1,2,6,9,10,13,51,52)])
 # arcsinh transformation with cofactr of 5 (divide data by 5)
 
 
@@ -102,7 +132,7 @@ toPlot2 <- as.data.frame(toPlot2)
 #Sample and repeat the sample name for the number cells sampled
 
 toPlot2$Sample <- c(rep("MICC_15_130_01", cellsPerSample),
-                   rep("HVTN5217", cellsPerSample),
+                   #rep("HVTN5217", cellsPerSample),
                    rep("HVTN4396", cellsPerSample),
                    rep("HVTN3633", cellsPerSample))
 
@@ -111,8 +141,9 @@ toPlot2$Sample <- c(rep("MICC_15_130_01", cellsPerSample),
 head(toPlot2)
 
 #shows each sample as a different color
-cofactor5<-ggplot(as.data.frame(toPlot2), aes(tsne1, tsne2)) +
+tSNE3samples<-ggplot(as.data.frame(toPlot2), aes(tsne1, tsne2)) +
   geom_point(aes(color = Sample)) 
+ggsave("tSNE3samples.png",dpi=600)
 
 #now melt the df so you can plot tsne1 vs tsne2 (like in viSNE)and
 #color the plots by the value given for 
@@ -121,10 +152,10 @@ meltToPlot2<-melt(toPlot2,id.vars=c("tsne1","tsne2","Sample"))
 
 #merge in the df of the channels and their corresponding names
 
-g<-merge(meltToPlot2, channelAndDesc,by.x="variable",by.y="name")
+meltToPlot2<-merge(meltToPlot2, channelAndDesc,by.x="variable",by.y="name")
 
-allParams<-ggplot(g, aes(x=tsne1,y=tsne2))+
-  geom_point(aes(color = value),alpha=0.6, size=0.2) +
+allParams<-ggplot(meltToPlot2, aes(x=tsne1,y=tsne2))+
+  geom_point(aes(color = value),alpha=0.6, size=.6) +
   scale_colour_gradientn("value", colours=topo.colors(7))+
   facet_wrap(~desc) +
   xlab("bhSNE1") + 
