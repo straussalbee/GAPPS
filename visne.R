@@ -3,42 +3,28 @@ library(Rtsne)
 library(ggplot2)
 library(reshape2)
 library(dplyr)
+library(stringr)
 
 ################## READ IN FCS FILES (LIVE POPN, EXPORTED) ###########
 
+#locate the folder where the fcs files are 
+folderPath<-"J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\fcs and compiled flowjo\\normed live export"
+
+#The flowCore method for reading in files
+frames<-lapply(dir(folderPath, pattern = "\\.fcs",full.names = TRUE),
+               read.FCS)
 
 
-MICC_15_130_01 <- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\15-130-01_normalized.exported.FCS3.fcs")
-#HVTN5217 <- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\5217.exported.FCS3.fcs")
-HVTN4396<- read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\4396_normalized.exported.FCS3.fcs")
-HVTN3633<-read.FCS("J:\\MacLabUsers\\Claire\\Projects\\GAPPS Project\\GAPPS 2015 Neutrophils\\data and analysis\\for viSNE\\3633_normalized.exported.FCS3.fcs")
+as(frames,"flowSet")
 
-#checking the parameters
-pDataMICC<-pData(parameters(MICC_15_130_01))
-pData5217<-pData(parameters(HVTN5217))
-pData4396<-pData(parameters(HVTN4396))
-pData3633<-pData(parameters(HVTN3633))
+names(frames) <- sapply(frames, keyword, "FILENAME")
 
-identical(pData3633$name,pData4396$name)
-identical(pData3633$name,pDataMICC$name)
+fs<-as(frames,"flowSet")
 
-identical(pData3633$desc,pDataMICC$desc)
-identical(pData3633$desc,pData4396$desc)
-
-#which names that are in 5217 are NOT in 3633
-subset(pData5217$name,!(pData5217$name %in% pData3633$name))
-#$P49N     $P50N 
-#"Cd106Di" "Cd108Di" 
-#these are extra qdot channels, also the desc and name aren't matching up correctly
-
-################# ISSUE ######################################
-#5Aug15: Found issue when trying to remove unwanted channels from
-#the FCS files that I read in, some names and desc don't match up.
-#I checked flowjo and if I open the exported file in a new wsp I see
-#the same problem. Things match ok in the original wsp.
-#Tried to re-export the live population 2x and got "export error"
-#leaving that sample out for now
-
+#a faster way to do it
+fs2<-read.flowSet(dir(folder, pattern = "\\.fcs"),
+                  name.keyword="SAMPLE ID",
+                  phenoData=list(name="SAMPLE ID",Filename="$FIL"))
 
 ###### SUBSAMPLE THE SAMPLES #####################
 
@@ -81,7 +67,6 @@ rownames(channelAndDesc)<-NULL
 # @exprs removes matrix from flowframe
 #one row per cell, columns are channels
 #rbind multiple samples
-#Note that HVTN5217 doesn't have any of the beads columns so the indices to remove are different
 
 toCluster <- rbind(MICC_15_130_01_sub@exprs[,-c(1,2,6,9,10,13,51,52)],
                    #HVTN5217_sub@exprs[,-c(1,2,6,9,51)],
@@ -156,7 +141,8 @@ meltToPlot2<-merge(meltToPlot2, channelAndDesc,by.x="variable",by.y="name")
 
 allParams<-ggplot(meltToPlot2, aes(x=tsne1,y=tsne2))+
   geom_point(aes(color = value),alpha=0.6, size=.6) +
-  scale_colour_gradientn("value", colours=topo.colors(7))+
+  scale_colour_gradient2("value", low="white",
+                         mid="blue",high="red",mid)+
   facet_wrap(~desc) +
   xlab("bhSNE1") + 
   ylab("bhSNE2") +
@@ -166,3 +152,4 @@ allParams<-ggplot(meltToPlot2, aes(x=tsne1,y=tsne2))+
 
 ggsave("allParams.png",dpi=600)
                            
+#for scale colour gradientn("value, colours=topo.colors(7))
